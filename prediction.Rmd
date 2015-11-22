@@ -1,0 +1,124 @@
+---
+title: "Prediction Assignment Writeup"
+output: html_document
+---
+Executive Summary: This project aims at the analysis and prediction of data collected about the personal activity on persons by using devices such as the Jawbone Up, Nike, FuelBand and Fitbit.The goal is to use the data from accelerometers on the belt, forearm, arm and dumbell of the six participants and build a model on the variable "classe" on training data, cross validate it and use the model to predict the test data.
+
+Download Data:
+
+```{r, eval=FALSE}
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", "training.csv", method ="auto")
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", "testing.csv", method = "auto")
+
+```
+
+Loading the required libraries-
+
+```{r}
+library(caret)
+library(randomForest)
+
+```
+
+Read the downloaded training data-
+
+```{r}
+training_set <- read.csv("training.csv", header = TRUE, sep = ",")
+
+```
+
+Now, we will split the training set dataset into a training data that we will use to build a model and a dataset for cross validation. We are splitting the data into a 75 percent for training the model and a 25% for cross validating the model.
+
+```{r}
+intrain <- createDataPartition(training_set$classe, p=0.75, list=FALSE)
+training <- training_set[intrain, ]
+training_Xval <- training_set[-intrain,]
+
+```
+
+Analysis of the training data-
+
+```{r, eval=FALSE}
+names(training)
+dim(training)
+unique(training$classe)
+
+```
+
+On analysing the data in the training set, we see that there are few columns that are NAs and there are few columns that are blank. As the number of missing values are far more, we consider dropping such variables and not imputting. The strategy is to first fill the blank with NAs and delete all those variables with NAs then.
+
+```{r}
+training[training==""] <- NA
+training <- training[,colSums(is.na(training)) == 0] 
+
+```
+
+There are some variables that are not from the wearables and we won't be using for any prediction and we can remove them as such.
+
+```{r, results='hide'}
+training <- training[,8:60]
+```
+
+Having removed the variables that have blanks and NAs, then we need to identify those that have near-zero variance.
+
+```{r, results='hide'}
+nsv <- nearZeroVar(training, saveMetrics = TRUE)
+nsv
+str(nsv, vec.len=2)
+nsv[nsv[,"zeroVar"]>0,]
+nsv[nsv[,"zeroVar"] + nsv[,"nzv"]>0,]
+
+```
+
+We find that there are no near-zero variance predictors and we are left with all the 53 variables in our dataset. Now that we have the training dataset, we would analyze if there are strongly correlated variables.
+
+```{r, results='hide'}
+M <- abs(cor(training[, -53]))
+diag(M) <- 0
+which(M > 0.8, arr.ind = T)
+
+```
+
+It looks like none of the predictors are also correlated. So we are going to use all the 53 variables in our prediction model.
+
+```{r}
+set.seed(5457)
+modfit2 <- randomForest(classe~., data=training)
+modfit2
+
+```
+
+Now, we will use the above model to predict the dataset that we have for cross validation and check for the accuracy and the error rate.
+
+```{r}
+pred_Xval <- predict(modfit2, newdata = training_Xval)
+confusionMatrix(pred_Xval, training_Xval$classe)
+
+```
+
+*Out of Sample Error rate*
+
+The out of sample error rate is nothing but one minus the overall accuracy from the above prediction with the cross vaildation dataset. Hence the out of sample error rate is-
+
+```{r, results='hide'}
+os_errorrate <-  (1 - confusionMatrix(pred_Xval,training_Xval$classe)$overall["Accuracy"] )
+os_errorrate
+```
+
+```{r, echo=FALSE}
+as.numeric(os_errorrate)
+```
+
+Now lets read the test file.
+
+```{r}
+testing <- read.csv("testing.csv", header = TRUE, sep=",")
+
+```
+
+Now let us predict the testing set using the above model.
+
+```{r}
+pred_test <- predict(modfit2, newdata = testing)
+pred_test
+```
